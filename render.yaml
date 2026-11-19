@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: mileway-booking
+    runtime: node
+    plan: free
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      - key: APP_ENV
+        value: demo
+      - key: MONGODB_URI
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DEMO_SEED_PASSWORD
+        sync: false
+      - key: SEED_ON_START
+        value: "true"
+      - key: DEMO_PAYMENTS
+        value: "true"
+      - key: NEXT_TELEMETRY_DISABLED
+        value: "1"

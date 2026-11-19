@@ -1,0 +1,5 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+:root{font-family:'Inter Variable',Inter,system-ui,sans-serif;color:#101e3c;background:white;font-synthesis:none;--primary:#224ee8;--ink:#101e3c}
+*{box-sizing:border-box}html{scroll-behavior:smooth;scroll-padding-top:20px}body{margin:0}button,input,select,textarea{font:inherit}button,a,input,select,textarea,summary{touch-action:manipulation}button:disabled{cursor:not-allowed}a,button,input,select,textarea,summary{outline-offset:4px}:focus-visible{outline:3px solid #3555cf}::selection{background:#c2d0ff;color:#111e38}@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;transition-duration:.01ms!important}}
