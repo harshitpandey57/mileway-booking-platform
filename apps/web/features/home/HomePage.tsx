@@ -153,7 +153,7 @@ function PopularRoutes({ date }: { date: string }) {
       <div className={styles.sectionHead}>
         <div>
           <h2 id="popular-title">Popular routes</h2>
-          <p>Explore some of India’s most-travelled bus routes.</p>
+          <p>Choose a route to see upcoming buses and fares.</p>
         </div>
         {items.length > 4 && (
           <button
