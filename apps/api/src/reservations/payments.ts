@@ -71,7 +71,18 @@ export async function createOrder(userId: string, bookingId: string) {
     orderId = order.data.id;
   }
   try {
-    return orderView(await Payment.create({ bookingId, orderId, provider, amount: booking.total }));
+    // The gateway round trip may outlive the hold. Publish an order only if the
+    // booking is still payable, serializing with cancellation and another order.
+    const persisted = await mongoose.connection.transaction(async session => {
+      const current = await Booking.findOneAndUpdate({
+        _id: booking._id, userId, status: 'pending', expiresAt: { $gt: new Date() }
+      }, { $inc: { __v: 1 } }, { new: true, session });
+      if (!current) throw new HttpError(409, 'The booking expired or was cancelled before the payment order was ready');
+      const raced = await Payment.findOne({ bookingId }).session(session);
+      if (raced) return raced;
+      return (await Payment.create([{ bookingId, orderId, provider, amount: current.total }], { session }))[0];
+    });
+    return orderView(persisted);
   } catch (error) {
     if (!duplicate(error)) throw error;
     const winner = await Payment.findOne({ bookingId });

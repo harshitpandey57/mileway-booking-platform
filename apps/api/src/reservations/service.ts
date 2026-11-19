@@ -3,7 +3,7 @@ import mongoose, { type ClientSession, Types } from 'mongoose';
 import { z } from 'zod';
 import { Trip, Coupon } from '../catalog/models';
 import { HttpError } from '../core';
-import { Notification } from '../core/models';
+import { Notification, User } from '../core/models';
 import { Booking, Inventory, Passenger, Payment, Refund, SeatHold } from './models';
 
 const idPattern = /^[a-f\d]{24}$/i;
@@ -42,6 +42,9 @@ export async function createHold(userId: string, input: z.infer<typeof holdInput
   try {
     return await mongoose.connection.transaction(async session => {
       const now = new Date();
+      // A common account write serializes the outstanding-seat limit across trips.
+      const account = await User.updateOne({ _id: userId, active: true }, { $inc: { __v: 1 } }, { session });
+      if (!account.matchedCount) throw new HttpError(401, 'Sign in to reserve seats');
       // Serialize holds with trip edits/cancellations in the same transaction.
       const trip = await Trip.findOneAndUpdate({
         _id: input.tripId, status: { $in: ['scheduled', 'delayed'] }, departureAt: { $gt: now }
@@ -52,6 +55,10 @@ export async function createHold(userId: string, input: z.infer<typeof holdInput
         seats: { $all: input.seats, $size: input.seats.length }
       }).session(session).lean();
       if (existing) return existing;
+      const recent = await SeatHold.find({ userId, status: { $in: ['active', 'converted'] }, expiresAt: { $gt: now } })
+        .select('_id').session(session).lean();
+      const outstanding = await Inventory.countDocuments({ holdId: { $in: recent.map(hold => hold._id) }, status: 'held', expiresAt: { $gt: now } }).session(session);
+      if (outstanding + input.seats.length > 12) throw new HttpError(429, 'You can hold up to 12 seats at once. Finish or release an existing reservation.');
       const selected = trip.seats.filter(s => input.seats.includes(s.number));
       if (selected.length !== input.seats.length) throw new HttpError(422, 'One or more seats do not belong to this trip');
       const subtotal = selected.reduce((sum, s) => sum + s.price, 0);
@@ -96,7 +103,13 @@ async function quoteCoupon(subtotal: number, code: string | undefined, session: 
 export async function createBooking(userId: string, input: z.infer<typeof bookingInput>) {
   return mongoose.connection.transaction(async session => {
     const existing = await Booking.findOne({ holdId: input.holdId, userId }).session(session);
-    if (existing) return existing;
+    if (existing) {
+      if (existing.status === 'pending' && existing.expiresAt <= new Date()) {
+        existing.status = 'expired';
+        await existing.save({ session });
+      }
+      return existing;
+    }
     const hold = await SeatHold.findOneAndUpdate({
       _id: input.holdId, userId, status: 'active', expiresAt: { $gt: new Date() }
     }, { $set: { status: 'converted' } }, { new: true, session });
@@ -167,7 +180,7 @@ export async function cancelBooking(bookingId: string, actor: { id: string; role
     await releaseInventory(booking._id, session);
     booking.status = booking.status === 'pending' && booking.expiresAt.getTime() <= now ? 'expired' : 'cancelled';
     booking.cancelledAt = new Date(now);
-    await Notification.create([{ userId: booking.userId, title: 'Booking cancelled', message: booking.reference + ': your seats have been released.' + (booking.paymentStatus === 'refund_simulated' ? ' Simulated refund of INR ' + booking.refundAmount + '.' : '') }], { session });
+    await Notification.create([{ userId: booking.userId, title: booking.status === 'expired' ? 'Seat hold expired' : 'Booking cancelled', message: booking.reference + ': your seats have been released.' + (booking.paymentStatus === 'refund_simulated' ? ' Simulated refund of INR ' + booking.refundAmount + '.' : '') }], { session });
     await booking.save({ session });
     return booking;
   });

@@ -84,6 +84,22 @@ describe('Seat reservations and payments', () => {
     assert.equal((await available()).filter(s => seats.includes(s.number)).length, 3);
   });
 
+  it('limits outstanding seats across concurrent trips while preserving idempotent holds', async () => {
+    const seats = (await available()).slice(0, 6).map(s => s.number);
+    const hold = await newHold(owner, seats);
+    assert.equal((await newHold(owner, [...seats].reverse()))._id, hold._id);
+    const b = (await owner.post(base + '/bookings').send(checkout(hold)).expect(201)).body.data;
+    const trips = await Trip.find({ _id: { $ne: tripId }, status: 'scheduled', departureAt: { $gt: new Date() } }).limit(2).lean();
+    assert.equal(trips.length, 2);
+    const responses = await Promise.all(trips.map(trip => owner.post(base + '/seat-holds').send({
+      tripId: String(trip._id), seats: trip.seats.slice(0, 6).map(s => s.number)
+    })));
+    assert.deepEqual(responses.map(r => r.status).sort(), [201, 429]);
+    const winner = responses.find(r => r.status === 201)!;
+    await owner.post(base + '/bookings/' + b._id + '/cancel').send({}).expect(200);
+    await owner.delete(base + '/seat-holds/' + winner.body.data._id).expect(200);
+  });
+
   it('checks passenger assignment, point membership and coupons, deriving its own totals', async () => {
     const seats = (await available()).slice(0, 2);
     const subtotal = seats.reduce((a, s) => a + s.price, 0);
@@ -168,6 +184,20 @@ describe('Seat reservations and payments', () => {
     assert.equal(paid.body.data.paymentMode, 'razorpay');
     assert.equal(paid.body.data.status, 'confirmed');
     // The local gateway fixture never contacts Razorpay.
+  });
+
+  it('withholds the gateway order if the customer cancelled during order creation', async t => {
+    const booking = await newBooking();
+    process.env.RAZORPAY_KEY_ID = 'rzp_test_integration';
+    process.env.RAZORPAY_KEY_SECRET = randomBytes(32).toString('hex');
+    t.after(() => { delete process.env.RAZORPAY_KEY_ID; delete process.env.RAZORPAY_KEY_SECRET; });
+    t.mock.method(globalThis, 'fetch', async () => {
+      await owner.post(base + '/bookings/' + booking._id + '/cancel').send({}).expect(200);
+      return Response.json({ id: 'order_' + booking._id, amount: booking.total * 100, currency: 'INR' });
+    });
+    await owner.post(base + '/payments/order').send({ bookingId: booking._id }).expect(409);
+    assert.equal(await Payment.countDocuments({ bookingId: booking._id }), 0);
+    assert.ok((await available()).some(s => s.number === booking.seats[0]));
   });
 
   it('verifies raw webhook signatures and processes duplicates and out-of-order failures once', async () => {

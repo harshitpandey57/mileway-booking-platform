@@ -16,6 +16,9 @@ const hold = new Schema({
 }, options);
 hold.index({ userId: 1, createdAt: -1 });
 hold.index({ tripId: 1, expiresAt: 1 });
+hold.index({ userId: 1, status: 1, expiresAt: 1 });
+// Converted holds remain as booking records. Abandoned carts can be pruned a day later.
+hold.index({ expiresAt: 1 }, { expireAfterSeconds: 86400, partialFilterExpression: { status: { $in: ['active', 'released'] } } });
 export const SeatHold = model('SeatHold', hold);
 
 const inventory = new Schema({
@@ -26,6 +29,8 @@ const inventory = new Schema({
 }, options);
 inventory.index({ tripId: 1, seat: 1 }, { unique: true });
 inventory.index({ tripId: 1, status: 1, expiresAt: 1 });
+inventory.index({ holdId: 1 }, { sparse: true });
+inventory.index({ bookingId: 1 }, { sparse: true });
 export const Inventory = model('SeatInventory', inventory);
 
 const booking = new Schema({
