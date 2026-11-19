@@ -2,6 +2,7 @@
 import { useState, type FormEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 import type { Item, Role, Section } from "./config";
 
 const timeInput = (v: unknown) =>
@@ -34,10 +35,11 @@ function Picker({
   label: string;
   initialLabel?: string;
 }) {
+  const { user } = useAuth();
   const [term, setTerm] = useState(""),
     [page, setPage] = useState(1);
   const q = useQuery({
-    queryKey: ["manage-options", role, kind, owner, term, page],
+    queryKey: ["manage-options", user?.id, role, kind, owner, term, page],
     queryFn: () =>
       api<{ value: string; label: string }[]>(
         "/" +

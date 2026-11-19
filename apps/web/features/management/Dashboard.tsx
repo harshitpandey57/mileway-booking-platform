@@ -214,8 +214,9 @@ function OverviewPanel({
   );
 }
 function ManifestPanel({ role, id }: { role: Role; id: string }) {
+  const { user } = useAuth();
   const q = useQuery({
-    queryKey: ["manage-manifest", role, id],
+    queryKey: ["manage-manifest", user?.id, role, id],
     queryFn: () => api<Manifest>("/" + role + "/trips/" + id + "/manifest"),
     staleTime: 0,
   });
