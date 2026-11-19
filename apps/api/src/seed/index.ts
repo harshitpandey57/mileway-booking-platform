@@ -94,31 +94,82 @@ export async function seed() {
       }),
       startMinutes: (departure + i * (duration + 70)) % 1440
     }));
-    return { bus, op, fare, duration, directions };
+    return { bus, duration, directions };
   });
   await Bus.bulkWrite(upserts(timetable.map(t => t.bus)));
   const routesById = new Map(timetable.flatMap(t => t.directions.map(d => [String(d.route._id), d.route] as const)));
   await Route.bulkWrite(upserts([...routesById.values()]));
-  const operatorRatings = await Operator.find({ _id: { $in: operators.map((_, i) => opId(i)) } }).select('rating').lean();
-  const liveRating = new Map(operatorRatings.map(operator => [String(operator._id), operator.rating]));
-  const today = new Date();
-  for (let offset = 0; offset < 15; offset++) {
-    const date = dayString(new Date(+today + offset * dayMs));
-    const midnight = new Date(date + 'T00:00:00+05:30').getTime();
-    const trips = timetable.flatMap(({ bus, op, fare, duration, directions }) => directions.map(({ route, startMinutes }) => {
+  const now = new Date();
+  const dates = Array.from({ length: 15 }, (_, offset) => dayString(new Date(+now + offset * dayMs)));
+  const plans = timetable.map(({ bus, duration, directions }) => {
+    const candidates = dates.flatMap(date => directions.map(({ route, startMinutes }) => {
+      const midnight = new Date(date + 'T00:00:00+05:30').getTime();
       const departureAt = new Date(midnight + startMinutes * 60000);
       return fixture('trip/' + bus._id + '/' + route._id + '/' + date, {
-        operatorId: bus.operatorId, busId: bus._id, routeId: route._id, from: route.from, to: route.to,
-        operatorName: operators[op][0], busName: bus.name, busType: bus.busType, departureAt,
-        arrivalAt: new Date(+departureAt + duration * 60000), date, fare, rating: liveRating.get(String(bus.operatorId)) ?? sampleRating(op),
-        amenities: bus.amenities, boardingPoints: route.boardingPoints, droppingPoints: route.droppingPoints,
-        seats: bus.seats, status: 'scheduled', cancellationHours: 4, refundPercent: 80
+        busId: bus._id, routeId: route._id, from: route.from, to: route.to, date,
+        departureAt, arrivalAt: new Date(+departureAt + duration * 60000)
       });
-    }));
-    await Trip.bulkWrite(upserts(trips));
+    })).filter(trip => trip.departureAt > now);
+    return { busId: bus._id, candidates };
+  });
+  // A warm restart usually finds the entire horizon already present. Read only IDs in this pass.
+  const plannedIds = plans.flatMap(plan => plan.candidates.map(trip => trip._id));
+  const existingIds = await Trip.find({ _id: { $in: plannedIds } }).select('_id').lean();
+  const present = new Set(existingIds.map(doc => String(doc._id)));
+  const missing = plans.map(plan => ({
+    busId: plan.busId, candidates: plan.candidates.filter(trip => !present.has(String(trip._id)))
+  })).filter(plan => plan.candidates.length);
+
+  async function extendBus(plan: typeof missing[number]) {
+    return mongoose.connection.transaction(async session => {
+      // Staff scheduling takes the same bus write lock. A conflicting writer must recheck its timetable.
+      const bus = await Bus.findOneAndUpdate({ _id: plan.busId }, { $inc: { __v: 1 } },
+        { new: true, session, timestamps: false }).lean();
+      if (!bus) return 0;
+      const operator = await Operator.findById(bus.operatorId).select('name rating').session(session).lean();
+      if (!operator) return 0;
+      const currentRoutes = await Route.find({ operatorId: operator._id, _id: { $in: plan.candidates.map(t => t.routeId) } })
+        .session(session).lean();
+      const byId = new Map(currentRoutes.map(route => [String(route._id), route]));
+      const start = new Date(Math.min(...plan.candidates.map(t => +t.departureAt)));
+      const end = new Date(Math.max(...plan.candidates.map(t => +t.arrivalAt)));
+      const occupied = await Trip.find({ $or: [
+        { _id: { $in: plan.candidates.map(t => t._id) } },
+        { busId: bus._id, departureAt: { $lt: end }, arrivalAt: { $gt: start } }
+      ] }).select('_id busId departureAt arrivalAt status').session(session).lean();
+      const known = new Set(occupied.map(t => String(t._id)));
+      const windows: { departureAt: Date; arrivalAt: Date; status: string }[] =
+        occupied.filter(t => t.busId.equals(bus._id));
+      const inserts = [];
+      for (const trip of plan.candidates) {
+        const route = byId.get(String(trip.routeId));
+        if (!route || route.from !== trip.from || route.to !== trip.to ||
+          trip.departureAt.getTime() <= Date.now() || known.has(String(trip._id))) continue;
+        // An exact departure is unique even for cancelled or completed records.
+        const overlaps = windows.some(w => +w.departureAt === +trip.departureAt ||
+          (['scheduled', 'delayed'].includes(w.status) && w.departureAt < trip.arrivalAt && w.arrivalAt > trip.departureAt));
+        if (overlaps) continue;
+        const record = {
+          ...trip, operatorId: operator._id, operatorName: operator.name, busName: bus.name, busType: bus.busType,
+          amenities: bus.amenities, seats: bus.seats, fare: Math.min(...bus.seats.map(seat => seat.price)), rating: operator.rating,
+          boardingPoints: route.boardingPoints, droppingPoints: route.droppingPoints, status: 'scheduled' as const,
+          cancellationHours: 4, refundPercent: 80
+        };
+        windows.push(record);
+        inserts.push(record);
+      }
+      if (inserts.length) await Trip.bulkWrite(upserts(inserts), { session });
+      return inserts.length;
+    });
+  }
+  let insertedTrips = 0;
+  for (let i = 0; i < missing.length; i += 4) {
+    const counts = await Promise.all(missing.slice(i, i + 4).map(extendBus));
+    insertedTrips += counts.reduce((sum, n) => sum + n, 0);
   }
   return { cities: Object.keys(cities).length, operators: operators.length, buses: timetable.length,
-    routes: routesById.size, scheduledFixtures: timetable.length * 2 * 15 };
+    routes: routesById.size, insertedTrips, existingUpcomingFixtures: present.size };
+
 }
 
 if (require.main === module) {

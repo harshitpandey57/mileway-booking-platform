@@ -53,6 +53,50 @@ describe('MongoDB catalog, search and verified reviews', () => {
     }
   });
 
+  it('preserves operator schedules with identical or overlapping departure windows on a rolling reseed', async () => {
+    const later = new Date(Date.now()+12*86400000+330*60000).toISOString().slice(0,10);
+    const fixtures = await Trip.find({ ...input, date:later }).sort({departureAt:1}).limit(3).lean();
+    assert.equal(fixtures.length, 3);
+    await Trip.deleteMany({_id:{$in:fixtures.map(t=>t._id)}});
+    const manual = await Trip.create(fixtures.map((t,i) => ({
+      ...t, _id:new Types.ObjectId(), departureAt:new Date(+t.departureAt + (i===1 ? 60000 : 0)),
+      status:i===2 ? 'cancelled' : 'scheduled'
+    })));
+    try {
+      const counts = await seed();
+      assert.equal(counts.insertedTrips,0);
+      assert.equal(await Trip.countDocuments({_id:{$in:fixtures.map(t=>t._id)}}),0);
+      assert.equal(await Trip.countDocuments({_id:{$in:manual.map(t=>t._id)}}),3);
+      assert.equal(await Trip.countDocuments({departureAt:{$lt:new Date(Date.now()-120000)}}),0);
+    } finally {
+      await Trip.deleteMany({_id:{$in:manual.map(t=>t._id)}});
+      await Trip.create(fixtures);
+    }
+  });
+
+  it('serializes concurrent rolling seeds and operator scheduling for the same bus', async () => {
+    const later = new Date(Date.now()+13*86400000+330*60000).toISOString().slice(0,10);
+    const original = await Trip.findOne({...input,date:later}).lean().orFail();
+    const operator = await Operator.findById(original.operatorId).lean().orFail();
+    const owner = await User.findById(operator.userId).lean().orFail();
+    const client = request.agent(suite.app);
+    await client.post('/api/v1/auth/login').send({email:owner.email,password:process.env.DEMO_SEED_PASSWORD}).expect(200);
+    await Trip.deleteOne({_id:original._id});
+    const window = {busId:original.busId,departureAt:{$lt:original.arrivalAt},arrivalAt:{$gt:original.departureAt}};
+    try {
+      const [, , response] = await Promise.all([seed(),seed(),client.post('/api/v1/operator/trips').send({
+        busId:String(original.busId),routeId:String(original.routeId),departureAt:new Date(+original.departureAt+60000).toISOString(),
+        arrivalAt:original.arrivalAt.toISOString(),fare:original.fare,cancellationHours:2,refundPercent:90
+      })]);
+      assert.ok([201,409].includes(response.status),JSON.stringify(response.body));
+      assert.equal(await Trip.countDocuments(window),1);
+      if (response.status===201) assert.equal(await Trip.countDocuments({_id: original._id}),0);
+    } finally {
+      await Trip.deleteMany(window);
+      await Trip.create(original);
+    }
+  });
+
   it('returns real city suggestions, popular routes, operators and redeemable coupons', async () => {
     const city = await get('cities').query({ q:'bEnG' }).expect(200);
     assert.deepEqual(city.body.data.map((c:{name:string}) => c.name), ['Bengaluru']);
