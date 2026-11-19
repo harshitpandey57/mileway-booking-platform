@@ -49,7 +49,7 @@ const schema = z.object({
       seat: z.string(),
       name: z.string().trim().min(2, "Enter at least 2 characters").max(80),
       age: z
-        .number({ invalid_type_error: "Enter an age" })
+        .number({ error: "Enter an age" })
         .int()
         .min(1, "Minimum age is 1")
         .max(120, "Maximum age is 120"),

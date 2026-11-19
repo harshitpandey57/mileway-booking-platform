@@ -9,7 +9,7 @@
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.2.8",
-    "@hookform/resolvers": "^3.10.0",
+    "@hookform/resolvers": "^7.0.7",
     "@mileway/shared": "*",
     "@radix-ui/react-slot": "^1.2.3",
     "@tanstack/react-query": "^5.90.7",
@@ -22,13 +22,13 @@
     "react-hook-form": "^7.66.0",
     "sonner": "^2.0.7",
     "tailwind-merge": "^2.6.0",
-    "zod": "^3.25.76"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "tailwindcss": "^3.4.18",
-    "postcss": "^8.5.6",
+    "postcss": "^8.5.33",
     "autoprefixer": "^10.4.22"
   }
 }
