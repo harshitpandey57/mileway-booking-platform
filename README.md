@@ -15,6 +15,8 @@ npm ci
 npm run demo:local
 ```
 
+**Windows ZIP setup.** Sign in to GitHub and [download the project ZIP](https://github.com/harshitpandey57/mileway-booking-platform/archive/refs/heads/main.zip). In File Explorer, select **Extract All**, then open the extracted folder containing `package.json` and `package-lock.json`. Type `powershell` in that folder’s address bar and press Enter. Run `npm.cmd ci`, then `npm.cmd run demo:local` after installation succeeds.
+
 Open **http://localhost:4000** when the server prints its listening message. The command starts a real loopback-only MongoDB replica set, builds the application, seeds the database and serves the exported site and API from one process. Its first run downloads an official MongoDB Community binary for your platform. The account data persists under the ignored `.local/` directory. Stop it with Ctrl+C. To use a preinstalled compatible binary, set `MONGOMS_SYSTEM_BINARY` to the absolute path of `mongod`.
 
 Choose **Bengaluru → Chennai**, select **Tomorrow**, then **Search buses**. Select a seat, register your own customer account or sign in, and continue to the passenger form. Choose a boarding and dropping point, then **Review booking → Pay with demo → Simulate success**. The confirmation page has **Download PDF**, **Print** and **Verify ticket**. The demo also supports failure, cancellation and retry while the hold remains active.
