@@ -180,12 +180,14 @@ router.post(
   resetLimit,
   asyncRoute(async (req, res) => {
     const { email } = z.object({ email: emailSchema }).parse(req.body);
+    const delivery =
+      process.env.RESEND_API_KEY || process.env.SMTP_URL ? "email" : "console";
     const localMailbox =
       process.env.NODE_ENV !== "production" &&
       process.env.ALLOW_DEV_RESET_LOG === "true";
     if (
       (process.env.RESEND_API_KEY && !process.env.MAIL_FROM) ||
-      (!process.env.RESEND_API_KEY && !process.env.SMTP_URL && !localMailbox)
+      (delivery === "console" && !localMailbox)
     )
       throw new HttpError(
         503,
@@ -228,19 +230,22 @@ router.post(
             signal: AbortSignal.timeout(8000),
           });
           if (!result.ok)
-            throw new Error("Mail transport rejected the request");
+            console.error(
+              `Password reset delivery failed (Resend HTTP ${result.status}). Check your Resend API key and sender settings.`,
+            );
         } else if (process.env.SMTP_URL) {
           await nodemailer.createTransport(process.env.SMTP_URL).sendMail(mail);
         } else {
           console.info("[Mileway development mailbox] " + url.href);
         }
       } catch {
+        const provider = process.env.RESEND_API_KEY ? "Resend" : "SMTP";
         console.error(
-          "Password reset delivery failed. Check the configured mail transport.",
+          `Password reset delivery failed. Check the ${provider} connection and sender settings.`,
         );
       }
     }
-    res.json({ data: { success: true } });
+    res.json({ data: { success: true, delivery } });
   }),
 );
 router.post(

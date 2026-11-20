@@ -4,7 +4,12 @@ import {existsSync,readFileSync,writeFileSync,mkdirSync} from 'node:fs';
 import {parseEnv} from 'node:util';
 import {localDatabase} from './local-mongo.mjs';
 
-// Keep this shortcut isolated from .env/Atlas. Values belong only to the local demo database.
+// Reuse mail settings from the project .env while keeping demo accounts and inventory local.
+const projectEnv = existsSync('.env') ? parseEnv(readFileSync('.env', 'utf8')) : {};
+const mailSettings = {};
+for (const key of ['RESEND_API_KEY', 'SMTP_URL', 'MAIL_FROM']) {
+  if (projectEnv[key] !== undefined) mailSettings[key] = projectEnv[key];
+}
 const localDir='.local';
 mkdirSync(localDir,{recursive:true,mode:0o700});
 const credentialFile=localDir+'/demo.env';
@@ -12,7 +17,7 @@ if(!existsSync(credentialFile)) writeFileSync(credentialFile,
   'JWT_SECRET='+randomBytes(48).toString('hex')+'\nDEMO_SEED_PASSWORD=Mw-'+randomBytes(16).toString('hex')+'\n',{mode:0o600,flag:'wx'});
 const port=Number(process.env.PORT||4000);
 const db=await localDatabase({persistent:true});
-const env={...process.env,...parseEnv(readFileSync(credentialFile,'utf8')),MONGODB_URI:db.getUri('mileway'),APP_ENV:'demo',NODE_ENV:'development',PUBLIC_BASE_URL:'http://localhost:'+port,PORT:String(port),DEMO_PAYMENTS:'true',SEED_ON_START:'true',ALLOW_DEV_RESET_LOG:'true',RAZORPAY_KEY_ID:'',RAZORPAY_KEY_SECRET:'',RAZORPAY_WEBHOOK_SECRET:''};
+const env={...mailSettings,...process.env,...parseEnv(readFileSync(credentialFile,'utf8')),MONGODB_URI:db.getUri('mileway'),APP_ENV:'demo',NODE_ENV:'development',PUBLIC_BASE_URL:'http://localhost:'+port,PORT:String(port),DEMO_PAYMENTS:'true',SEED_ON_START:'true',ALLOW_DEV_RESET_LOG:'true',RAZORPAY_KEY_ID:'',RAZORPAY_KEY_SECRET:'',RAZORPAY_WEBHOOK_SECRET:''};
 function runBuild() {
   const options = {stdio: 'inherit', env: {...env, NODE_ENV: 'production'}};
   const npmCli = process.env.npm_execpath;

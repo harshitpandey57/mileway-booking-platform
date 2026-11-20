@@ -109,7 +109,21 @@ Open **http://localhost:3000** for Next development and **http://localhost:4000/
 1. Select **Test Mode** in your Razorpay dashboard, generate a test key pair and set both Razorpay key variables on the API service.
 2. Enable **automatic capture**. Add a test webhook at `https://<your-service>/api/v1/payments/webhook` for `payment.captured` and `payment.failed`. Generate a separate webhook secret and set `RAZORPAY_WEBHOOK_SECRET` to the same value.
 3. Restart the service and use Razorpay’s published test payment methods in checkout. Configured test keys take precedence over simulated payments. A public HTTPS service is needed for gateway-delivered webhooks.
-4. For password-reset delivery on Render Free, use HTTPS with `RESEND_API_KEY` and `MAIL_FROM`. On a free Resend test account, the onboarding sender can deliver to the account owner’s own email. Delivery to other users needs a verified sending domain. With the local demo shortcut, a reset link is available in the server terminal. Tokens are single use, expire after 15 minutes and invalidate prior sessions after redemption.
+
+### Password-reset email in the VS Code demo
+
+By default, request a reset with an email registered in this copy of Mileway and look for `[Mileway development mailbox]` in the terminal running the server. Open the latest link within 15 minutes. The seeded `@mileway.test` addresses are fictional.
+
+To receive mail in your own inbox, register a Mileway customer with the same email address you use for your Resend account. Create a sending API key in Resend. In the project folder alongside `package.json`, create or edit the file named `.env` and enter the two settings below. Replace the placeholder with your key and keep this file private.
+
+```dotenv
+RESEND_API_KEY=your_resend_sending_key
+MAIL_FROM=onboarding@resend.dev
+```
+
+Stop the demo with **Ctrl+C**, restart it with `npm.cmd run demo:local` in PowerShell, then request a new link under **Sign in → Forgot password?** Open a localhost reset link on the computer running Mileway. The Resend onboarding sender can deliver to the Resend account’s own email address. To send to other inboxes, verify a domain in Resend and set `MAIL_FROM` to a sender on that domain.
+
+The local demo reads `RESEND_API_KEY`, `SMTP_URL` and `MAIL_FROM` from the root `.env`. Terminal environment variables take precedence. Resend takes precedence over SMTP. On Render Free, configure the Resend settings in the service environment. If an expected email is missing, check the server terminal for a transport error, then check the provider’s sending logs and the recipient’s spam folder.
 
 [Razorpay test payments](https://razorpay.com/docs/payments/payments/test-card-details/) · [Razorpay webhook setup](https://razorpay.com/docs/webhooks/setup-edit-payments/) · [Resend sender restrictions](https://resend.com/docs/knowledge-base/403-error-resend-dev-domain)
 

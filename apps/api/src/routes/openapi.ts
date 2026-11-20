@@ -35,7 +35,7 @@ endpoint('post','/auth/login','Start a seven-day cookie session',{...pub,body:ob
 endpoint('post','/auth/logout','Invalidate sessions for this account');
 endpoint('get','/auth/me','Read the current profile');
 endpoint('post','/auth/change-password','Change password and invalidate old sessions',{body:obj({currentPassword:str(),newPassword:password})});
-endpoint('post','/auth/forgot-password','Request a time-limited password reset link',{...pub,body:obj({email})});
+endpoint('post','/auth/forgot-password','Request a time-limited password reset link',{...pub,body:obj({email}),result:obj({success:bool,delivery:choices('console','email')}),detail:'Delivery identifies the configured channel. The response is the same for registered and unknown addresses.'});
 endpoint('post','/auth/reset-password','Consume a one-time password reset token',{...pub,body:obj({token:str(),password})});
 endpoint('get','/users/me','Read profile, saved passengers, favorites and history');
 endpoint('patch','/users/me','Update profile',{body:obj({name:str(),phone:str()})});

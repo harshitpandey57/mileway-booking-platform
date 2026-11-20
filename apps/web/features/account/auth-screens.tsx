@@ -43,7 +43,7 @@ const messages = {
   forgot: [
     "Reset your password",
     "Enter the email address you use with Mileway.",
-    "Send reset link",
+    "Request reset link",
   ],
 };
 export function AuthScreen() {
@@ -72,12 +72,14 @@ export function AuthScreen() {
     setStatus("");
     try {
       if (mode === "forgot") {
-        await api(
+        const { delivery } = await api<{ delivery: "console" | "email" }>(
           "/auth/forgot-password",
           json("POST", { email: emailSchema.parse(values.email) }),
         );
         setStatus(
-          "If this email has an active account, a reset link has been sent. The link expires in 15 minutes.",
+          delivery === "console"
+            ? "This demo uses a local mailbox. For an active account, look for [Mileway development mailbox] in the terminal running Mileway. Open the latest link within 15 minutes."
+            : "If you registered with this address, check your inbox and spam folder for “Reset your Mileway password”. The link expires in 15 minutes.",
         );
       } else {
         const fields =

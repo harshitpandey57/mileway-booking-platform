@@ -177,7 +177,7 @@ describe("Accounts and customer support", () => {
         .post(path("/auth/forgot-password"))
         .send({ email: credentials.email })
         .expect(200);
-      assert.deepEqual(resp.body, { data: { success: true } });
+      assert.deepEqual(resp.body, { data: { success: true, delivery: "console" } });
       await request(suite.app)
         .post(path("/auth/forgot-password"))
         .send({ email: "missing@mileway.test" })
@@ -211,6 +211,7 @@ describe("Accounts and customer support", () => {
     const key = randomBytes(18).toString("hex");
     process.env.RESEND_API_KEY = key;
     process.env.MAIL_FROM = "Mileway <journeys@mileway.test>";
+    let providerStatus = 200;
     let delivery:
       | {
           url: string;
@@ -229,14 +230,19 @@ describe("Accounts and customer support", () => {
           authorization: new Headers(init?.headers).get("authorization"),
           fields: JSON.parse(String(init?.body)),
         };
-        return new Response("{}", { status: 200 });
+        return new Response("{}", { status: providerStatus });
       },
     );
     try {
+      const expected = { data: { success: true, delivery: "email" } };
       await request(suite.app)
         .post(path("/auth/forgot-password"))
         .send({ email: credentials.email })
-        .expect(200, { data: { success: true } });
+        .expect(200, expected);
+      await request(suite.app)
+        .post(path("/auth/forgot-password"))
+        .send({ email: "missing@mileway.test" })
+        .expect(200, expected);
       assert.ok(delivery);
       assert.equal(delivery.url, "https://api.resend.com/emails");
       assert.equal(delivery.method, "POST");
@@ -253,6 +259,15 @@ describe("Accounts and customer support", () => {
           password: randomBytes(18).toString("hex"),
         })
         .expect(200);
+      providerStatus = 403;
+      const log = t.mock.method(console, "error", () => {});
+      await request(suite.app)
+        .post(path("/auth/forgot-password"))
+        .send({ email: credentials.email })
+        .expect(200, expected);
+      assert.deepEqual(log.mock.calls[0]?.arguments, [
+        "Password reset delivery failed (Resend HTTP 403). Check your Resend API key and sender settings.",
+      ]);
     } finally {
       for (const [name, value] of Object.entries(settings)) {
         if (value === undefined) delete process.env[name];
