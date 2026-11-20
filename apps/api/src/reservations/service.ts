@@ -31,6 +31,9 @@ const objectId = (value: string) => new Types.ObjectId(id.parse(value));
 export async function availability(tripId: string) {
   const trip = await Trip.findById(objectId(tripId)).lean();
   if (!trip) throw new HttpError(404, 'Trip not found');
+  if (!['scheduled', 'delayed'].includes(trip.status) || trip.departureAt <= new Date()) {
+    throw new HttpError(409, 'This trip is no longer open for seat selection');
+  }
   const occupied = await Inventory.find({
     tripId: trip._id, $or: [{ status: 'booked' }, { status: 'held', expiresAt: { $gt: new Date() } }]
   }).select('seat status').lean();

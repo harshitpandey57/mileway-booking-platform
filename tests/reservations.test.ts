@@ -45,7 +45,7 @@ describe('Seat reservations and payments', () => {
   function checkout(hold: { _id: string; seats: string[] }) {
     return {
       holdId: hold._id, boardingPoint, droppingPoint, email: 'rider@example.net', phone: '+91 98765 43210',
-      passengers: hold.seats.map((seat, i) => ({ seat, name: 'Passenger ' + (i + 1), age: 32 }))
+      passengers: hold.seats.map((seat, i) => ({ seat, name: i === 0 ? 'मीनाक्षी देशमुख' : 'Passenger ' + (i + 1), age: 32 }))
     };
   }
   async function newBooking() {
@@ -143,7 +143,9 @@ describe('Seat reservations and payments', () => {
     assert.equal(verified.body.data.passengers, undefined);
     await other.get(base + '/tickets/' + b._id + '/pdf').expect(404);
     const pdf = await owner.get(base + '/tickets/' + b._id + '/pdf').expect('Content-Type', /application\/pdf/).expect(200);
-    assert.equal(Buffer.from(pdf.body).subarray(0, 5).toString(), '%PDF-');
+    const document = Buffer.from(pdf.body);
+    assert.equal(document.subarray(0, 5).toString(), '%PDF-');
+    assert.match(document.toString('latin1'), /NotoSansDevanagari-Regular/);
     await other.post(base + '/bookings/' + b._id + '/cancel').send({}).expect(404);
     const cancelled = await owner.post(base + '/bookings/' + b._id + '/cancel').send({}).expect(200);
     assert.equal(cancelled.body.data.status, 'cancelled');

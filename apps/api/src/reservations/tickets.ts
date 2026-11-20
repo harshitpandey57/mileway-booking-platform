@@ -2,6 +2,7 @@ import PDFDocument from 'pdfkit';
 import QRCode from 'qrcode';
 import { Booking } from './models';
 import { HttpError } from '../core';
+import { printField } from './ticket-fonts';
 
 const journeyTime = new Intl.DateTimeFormat('en-IN', {
   dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kolkata'
@@ -28,18 +29,22 @@ export async function ticketPdf(userId: string, bookingId: string) {
   const width = 498;
   doc.fillColor('#183a35').font('Helvetica-Bold').fontSize(31).text('Mileway');
   doc.fontSize(10).font('Helvetica').text('DEMO E-TICKET   /   FICTIONAL INVENTORY');
-  doc.moveDown(1.8).font('Helvetica-Bold').fontSize(21).text(booking.from + ' to ' + booking.to);
-  doc.fontSize(11).font('Helvetica').text(booking.operatorName + '    |    ' + booking.busName);
+  doc.moveDown(1.8).fontSize(21);
+  printField(doc, booking.from + ' to ' + booking.to, 'Helvetica-Bold');
+  doc.fontSize(11);
+  printField(doc, booking.operatorName + '    |    ' + booking.busName);
   doc.moveDown().font('Helvetica-Bold').text('Booking ' + booking.reference);
   doc.font('Helvetica').text('Payment confirmed   |   ' + ({ demo: 'Simulated payment', razorpay: 'Razorpay Test Mode', coupon: 'Covered by coupon' }[booking.paymentMode || 'demo']));
-  doc.moveDown().font('Helvetica-Bold').text('Board at ' + booking.boardingPoint);
+  doc.moveDown();
+  printField(doc, 'Board at ' + booking.boardingPoint, 'Helvetica-Bold');
   doc.font('Helvetica').text(journeyTime.format(booking.departureAt) + ' IST');
-  doc.moveDown(0.5).font('Helvetica-Bold').text('Drop at ' + booking.droppingPoint);
+  doc.moveDown(0.5);
+  printField(doc, 'Drop at ' + booking.droppingPoint, 'Helvetica-Bold');
   doc.font('Helvetica').text(journeyTime.format(booking.arrivalAt) + ' IST');
   doc.moveDown(1.3).font('Helvetica-Bold').text('Passengers');
   doc.moveDown(0.4).font('Helvetica');
   for (const passenger of booking.passengers) {
-    doc.text('Seat ' + passenger.seat + '    |    ' + passenger.name + '    |    Age ' + passenger.age);
+    printField(doc, 'Seat ' + passenger.seat + '    |    ' + passenger.name + '    |    Age ' + passenger.age);
   }
   doc.moveDown(1.3).font('Helvetica-Bold').text('Fare');
   doc.font('Helvetica').text('Seats ' + rupees(booking.subtotal) + '    |    Discount ' + rupees(booking.discount));
